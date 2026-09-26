@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+/* BOVIMED design tokens */
+@theme {
+  --color-forest: #1b4332;
+  --color-fresh: #2d6a4f;
+  --color-leaf: #40916c;
+  --color-cream: #f8f5f0;
+  --color-earth: #d8cfc4;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Poppins", ui-sans-serif, system-ui, sans-serif;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: var(--color-cream);
+  color: var(--color-forest);
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Do NOT set global `a { color: inherit }` — it hides active sidebar text. */
+
+/* Sidebar / bottom nav — explicit colors so active white never disappears */
+.bovimed-nav-link {
+  color: #1b4332;
+}
+.bovimed-nav-link svg {
+  color: #1b4332;
+  stroke: #1b4332;
+}
+.bovimed-nav-link:hover {
+  background-color: #e8f0ea;
+  color: #1b4332;
+}
+.bovimed-nav-link:hover svg {
+  color: #1b4332;
+  stroke: #1b4332;
+}
+.bovimed-nav-link.is-active {
+  background-color: #1b4332 !important;
+  color: #ffffff !important;
+}
+.bovimed-nav-link.is-active span,
+.bovimed-nav-link.is-active svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}

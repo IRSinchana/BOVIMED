@@ -1,0 +1,1 @@
+"""BOVIMED backend application package."""

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-label="Dairy farm illustration">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#87b8a0"/>
+      <stop offset="55%" stop-color="#dce8d8"/>
+      <stop offset="100%" stop-color="#f3efe6"/>
+    </linearGradient>
+    <linearGradient id="field" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#4a7c59"/>
+      <stop offset="100%" stop-color="#2d5a3d"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="800" fill="url(#sky)"/>
+  <ellipse cx="980" cy="160" rx="90" ry="90" fill="#f6e7b0" opacity="0.85"/>
+  <path d="M0 420 C180 360 320 480 500 430 C680 380 820 470 1200 400 L1200 800 L0 800 Z" fill="url(#field)"/>
+  <path d="M0 520 C200 480 400 560 600 510 C800 460 1000 540 1200 500 L1200 800 L0 800 Z" fill="#3f6b4c" opacity="0.55"/>
+  <!-- barn -->
+  <path d="M140 430 L220 360 L300 430 V560 H140 Z" fill="#8b5a3c"/>
+  <rect x="170" y="470" width="40" height="90" fill="#f3efe6"/>
+  <rect x="230" y="470" width="40" height="90" fill="#f3efe6"/>
+  <!-- cow silhouette -->
+  <g transform="translate(620 470)" fill="#1b4332">
+    <ellipse cx="90" cy="40" rx="90" ry="38"/>
+    <circle cx="170" cy="18" r="28"/>
+    <rect x="20" y="55" width="12" height="50" rx="4"/>
+    <rect x="55" y="58" width="12" height="48" rx="4"/>
+    <rect x="110" y="58" width="12" height="48" rx="4"/>
+    <rect x="145" y="55" width="12" height="50" rx="4"/>
+    <ellipse cx="188" cy="28" rx="10" ry="6"/>
+  </g>
+  <g transform="translate(820 500)" fill="#243d2e" opacity="0.85">
+    <ellipse cx="55" cy="28" rx="55" ry="24"/>
+    <circle cx="105" cy="12" r="18"/>
+    <rect x="10" y="38" width="9" height="36" rx="3"/>
+    <rect x="35" y="40" width="9" height="34" rx="3"/>
+    <rect x="68" y="40" width="9" height="34" rx="3"/>
+    <rect x="90" y="38" width="9" height="36" rx="3"/>
+  </g>
+</svg>
