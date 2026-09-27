@@ -77,7 +77,21 @@ export default function AnalyzePage() {
       setResult(data)
       navigate(`/result/${data.analysis_id}`, { state: { result: data } })
     } catch (e) {
-      setError(e.message || t.common.backendDown)
+      let message = e?.message || t.common.backendDown
+      if (e?.isTimeoutError) {
+        message = 'Starting BOVIMED AI service… This may take a few seconds. Please wait a moment and try again.'
+      } else if (e?.isNetworkError) {
+        message = 'Unable to reach the BOVIMED server. Please check your connection and try again.'
+      } else if (e?.status === 401) {
+        message = 'Please log in again to continue.'
+      } else if (e?.status === 404) {
+        message = 'AI scan endpoint is unavailable. Please try again in a moment.'
+      } else if (e?.status >= 500) {
+        message = 'The AI scan failed on the server. Please try again in a moment.'
+      } else if (e?.isValidationError) {
+        message = 'Image validation failed. Please try a different cow photo.'
+      }
+      setError(message)
     } finally {
       setLoading(false)
       setStepIndex(0)
@@ -121,7 +135,14 @@ export default function AnalyzePage() {
       />
 
       <ErrorMessage message={error} />
-      {loading ? <LoadingOverlay steps={STEPS} activeIndex={stepIndex} /> : null}
+      {loading ? (
+        <LoadingOverlay
+          steps={STEPS}
+          activeIndex={stepIndex}
+          title="Starting BOVIMED AI service…"
+          subtitle="This may take a few seconds while the AI service wakes up."
+        />
+      ) : null}
 
       <button
         type="button"
