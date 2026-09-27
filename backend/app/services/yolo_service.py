@@ -11,19 +11,13 @@ import numpy as np
 from fastapi import HTTPException, status
 
 from app.config import Settings, get_settings
+from app.services.model_info import (
+    BOVIMED_CLASS_NAMES,
+    BOVIMED_MODEL_NAME,
+    is_valid_bovimed_class,
+)
 
 logger = logging.getLogger(__name__)
-
-# Official BOVIMED trained class names (must match best.pt)
-BOVIMED_CLASS_NAMES = {
-    0: "Cow_Feeding",
-    1: "Cow_drinking_water",
-    2: "Cow_lying",
-    3: "Cow_standing",
-    4: "Healthy_udder",
-    5: "Lumpy_infected_cow",
-    6: "Mastitis_infected_udder",
-}
 
 HEALTH_RELEVANT_CLASSES = {
     "Healthy_udder",
@@ -128,7 +122,15 @@ class YOLODetectionService:
             )
 
         try:
-            return self._real_inference(image_bgr)
+            result = self._real_inference(image_bgr)
+            logger.info(
+                "Model: %s | Model loaded: %s | Demo mode: %s | Detections: %s",
+                BOVIMED_MODEL_NAME,
+                True,
+                False,
+                len(result.detections),
+            )
+            return result
         except HTTPException:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -155,6 +157,12 @@ class YOLODetectionService:
                     cls_id = int(box.cls.item()) if box.cls is not None else -1
                     conf = float(box.conf.item()) if box.conf is not None else 0.0
                     class_name = str(names.get(cls_id, f"class_{cls_id}"))
+                    if not is_valid_bovimed_class(class_name):
+                        logger.warning(
+                            "Unexpected class from custom weights: id=%s name=%s",
+                            cls_id,
+                            class_name,
+                        )
                     xyxy = box.xyxy[0].tolist() if box.xyxy is not None else None
                     detections.append(
                         {
@@ -188,7 +196,7 @@ class YOLODetectionService:
             primary_finding=primary,
             annotated_image=annotated,
             demo_mode=False,
-            model_version=self.settings.model_version,
+            model_version=BOVIMED_MODEL_NAME,
             message=message,
             class_names=names,
         )
@@ -243,12 +251,19 @@ class YOLODetectionService:
             2,
             cv2.LINE_AA,
         )
+        logger.info(
+            "Model: %s | Model loaded: %s | Demo mode: %s | Detections: %s",
+            BOVIMED_MODEL_NAME,
+            False,
+            True,
+            len(detections),
+        )
         return InferenceResult(
             detections=detections,
             primary_finding=detections[0],
             annotated_image=annotated,
             demo_mode=True,
-            model_version=f"{self.settings.model_version}-demo",
+            model_version=f"{BOVIMED_MODEL_NAME}-demo",
             message=f"DEMO/MOCK RESULT - {reason}",
             class_names=dict(BOVIMED_CLASS_NAMES),
         )

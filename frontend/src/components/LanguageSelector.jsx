@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Globe, Check, ChevronDown } from 'lucide-react'
 import { useI18n } from '../i18n/I18nContext'
+import { normalizeLocaleCode } from '../i18n/languages'
 
 export default function LanguageSelector({ compact = false }) {
   const { lang, setLang, languages } = useI18n()
@@ -20,7 +21,7 @@ export default function LanguageSelector({ compact = false }) {
   }, [])
 
   return (
-    <div className="relative inline-block text-left" ref={menuRef}>
+    <div className="relative inline-block text-left" ref={menuRef} dir="ltr">
       <button
         type="button"
         onClick={() => setOpen(!open)}
@@ -32,10 +33,12 @@ export default function LanguageSelector({ compact = false }) {
         <span className="font-medium text-[#1b4332]">{current.native}</span>
         {!compact ? (
           <span className="hidden text-[10px] text-[#1b4332]/60 sm:inline">
-            ({current.label})
+            ({current.englishName || current.label})
           </span>
         ) : null}
-        <ChevronDown className={`h-3.5 w-3.5 text-[#1b4332]/60 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown
+          className={`h-3.5 w-3.5 text-[#1b4332]/60 transition-transform ${open ? 'rotate-180' : ''}`}
+        />
       </button>
 
       {open && (
@@ -51,7 +54,7 @@ export default function LanguageSelector({ compact = false }) {
                   key={l.code}
                   type="button"
                   onClick={() => {
-                    setLang(l.code)
+                    setLang(normalizeLocaleCode(l.code))
                     setOpen(false)
                   }}
                   className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs transition ${
@@ -63,7 +66,7 @@ export default function LanguageSelector({ compact = false }) {
                   <div className="flex flex-col">
                     <span className="text-sm font-medium">{l.native}</span>
                     <span className={`text-[10px] ${active ? 'text-white/80' : 'text-[#1b4332]/60'}`}>
-                      {l.label}
+                      {l.englishName || l.label}
                     </span>
                   </div>
                   {active && <Check className="h-4 w-4 shrink-0 text-white" />}

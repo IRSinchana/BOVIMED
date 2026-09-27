@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   Bell,
   Camera,
@@ -16,6 +16,7 @@ import {
 } from 'lucide-react'
 import AiModeBadge, { BrandMark } from '../components/AiModeBadge'
 import LanguageSelector from '../components/LanguageSelector'
+import NotificationBell from '../components/NotificationBell'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
 import { getHealth } from '../services/api'
@@ -33,12 +34,11 @@ function mobileNavClassName({ isActive }) {
 }
 
 export default function AppLayout() {
-  const { t } = useI18n()
+  const { t, textDir } = useI18n()
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [health, setHealth] = useState(null)
-
   const NAV = [
     { to: '/dashboard', end: true, label: t.nav.dashboard, icon: LayoutDashboard },
     { to: '/analyze', label: t.nav.analyze, icon: ScanLine },
@@ -83,7 +83,9 @@ export default function AppLayout() {
                 aria-hidden
                 color={isActive ? '#ffffff' : '#1b4332'}
               />
-              <span style={{ color: isActive ? '#ffffff' : '#1b4332' }}>{label}</span>
+              <span dir={textDir} style={{ color: isActive ? '#ffffff' : '#1b4332' }}>
+                {label}
+              </span>
             </>
           )}
         </NavLink>
@@ -107,6 +109,7 @@ export default function AppLayout() {
             <BrandMark to="/dashboard" />
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
+            <NotificationBell />
             <LanguageSelector />
             <AiModeBadge health={health} />
             <span className="hidden text-sm font-medium text-[#1b4332]/80 md:inline">
@@ -118,18 +121,22 @@ export default function AppLayout() {
               className="inline-flex items-center gap-1.5 rounded-xl border border-earth bg-white px-3 py-2 text-sm font-semibold text-[#1b4332]"
             >
               <LogOut className="h-4 w-4" color="#1b4332" />
-              <span className="hidden sm:inline">{t.nav.logout}</span>
+              <span className="hidden sm:inline" dir={textDir}>
+                {t.nav.logout}
+              </span>
             </button>
           </div>
         </div>
       </header>
 
       <div className="mx-auto flex max-w-7xl">
-        <aside className="sticky top-[65px] hidden h-[calc(100vh-65px)] w-60 shrink-0 border-r rtl:border-r-0 rtl:border-l border-earth bg-white/80 p-4 lg:block">
+        <aside className="sticky top-[65px] hidden h-[calc(100vh-65px)] w-60 shrink-0 border-r border-earth bg-white/80 p-4 lg:block">
           <nav className="flex flex-col gap-1" aria-label="Main">
             {navItems}
           </nav>
-          <p className="mt-8 px-2 text-xs leading-relaxed text-[#1b4332]/55">{t.disclaimer}</p>
+          <p className="mt-8 px-2 text-xs leading-relaxed text-[#1b4332]/55" dir={textDir}>
+            {t.disclaimer}
+          </p>
         </aside>
 
         {open ? (
@@ -140,7 +147,7 @@ export default function AppLayout() {
               aria-label="Close menu"
               onClick={() => setOpen(false)}
             />
-            <div className="absolute left-0 rtl:left-auto rtl:right-0 top-0 flex h-full w-72 flex-col bg-white p-4 shadow-xl">
+            <div className="absolute left-0 top-0 flex h-full w-72 flex-col bg-white p-4 shadow-xl">
               <div className="mb-4 flex items-center justify-between">
                 <BrandMark to="/dashboard" />
                 <button type="button" className="rounded-lg p-2" onClick={() => setOpen(false)}>
@@ -152,7 +159,7 @@ export default function AppLayout() {
           </div>
         ) : null}
 
-        <main className="min-w-0 flex-1 px-4 py-6 pb-24 sm:px-6 lg:pb-6">
+        <main className="min-w-0 flex-1 px-4 py-6 pb-24 sm:px-6 lg:pb-6" dir={textDir}>
           <Outlet context={{ health, setHealth }} />
         </main>
       </div>

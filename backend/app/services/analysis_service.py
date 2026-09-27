@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, UploadFile, status
@@ -17,7 +18,10 @@ from app.services.recommendation_engine import (
     get_recommendation_engine,
 )
 from app.services.risk_engine import RiskEngine, get_risk_engine
+from app.services.model_info import BOVIMED_MODEL_NAME, get_model_metadata, is_valid_bovimed_class
 from app.services.yolo_service import YOLODetectionService, get_yolo_service
+
+logger = logging.getLogger(__name__)
 
 
 class AnalysisService:
@@ -40,12 +44,30 @@ class AnalysisService:
         self,
         file: UploadFile,
         cow_id: str | None = None,
+        user_id: int | None = None,
     ) -> AnalysisOut:
         data, ext, _fmt = await self.images.read_and_validate(file)
         image_bgr = self.images.preprocess(data)
         upload_path = self.images.save_upload(image_bgr, ext)
 
         inference = self.yolo.predict(image_bgr)
+        for det in inference.detections:
+            class_name = str(det.get("class_name", ""))
+            if class_name and not is_valid_bovimed_class(class_name):
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=(
+                        f"Unexpected detection class '{class_name}' from model. "
+                        "Only BOVIMED YOLO11n trained classes are accepted."
+                    ),
+                )
+        logger.info(
+            "Model: %s | Model loaded: %s | Demo mode: %s | Detections: %s",
+            BOVIMED_MODEL_NAME,
+            (not inference.demo_mode) and self.yolo.model_loaded,
+            inference.demo_mode,
+            len(inference.detections),
+        )
         risk = self.risk.assess(
             inference.detections,
             demo_mode=inference.demo_mode,
@@ -115,6 +137,24 @@ class AnalysisService:
                 .options(selectinload(Analysis.detections))
                 .where(Analysis.id == analysis.id)
             )
+
+            if not inference.demo_mode and risk.risk_level in (
+                RiskEngine.MILD,
+                RiskEngine.MODERATE,
+                RiskEngine.HIGH,
+                RiskEngine.CRITICAL,
+                "Severe",
+            ):
+                from app.services.notification_service import create_analysis_notifications
+
+                try:
+                    create_analysis_notifications(
+                        self.db,
+                        analysis,
+                        user_id=user_id,
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.exception("Failed to create health notifications for analysis %s", analysis.id)
         except Exception as exc:  # noqa: BLE001
             self.db.rollback()
             raise HTTPException(
@@ -235,6 +275,30 @@ class AnalysisService:
 
         from app.services.care_guidance import get_care_guidance
 
+        model_meta = get_model_metadata(
+            model_loaded=self.yolo.model_loaded,
+            demo_mode=analysis.demo_mode,
+        )
+
+        image_url = self.images.to_public_url(analysis.image_path, "uploads")
+        annotated_image_url = self.images.to_public_url(
+            analysis.annotated_image_path, "results"
+        )
+        if image_url and not self.images.media_file_exists(analysis.image_path, "uploads"):
+            logger.warning(
+                "Upload image missing on disk for analysis %s: %s",
+                analysis.id,
+                analysis.image_path,
+            )
+        if annotated_image_url and not self.images.media_file_exists(
+            analysis.annotated_image_path, "results"
+        ):
+            logger.warning(
+                "Annotated image missing on disk for analysis %s: %s",
+                analysis.id,
+                analysis.annotated_image_path,
+            )
+
         return AnalysisOut(
             success=True,
             analysis_id=analysis.id,
@@ -247,11 +311,11 @@ class AnalysisService:
             recommendations=list(analysis.recommendations or []),
             timestamp=analysis.timestamp,
             model_version=analysis.model_version,
+            model_name=model_meta["model_name"],
+            model_loaded=model_meta["model_loaded"],
             demo_mode=analysis.demo_mode,
-            image_url=self.images.to_public_url(analysis.image_path, "uploads"),
-            annotated_image_url=self.images.to_public_url(
-                analysis.annotated_image_path, "results"
-            ),
+            image_url=image_url,
+            annotated_image_url=annotated_image_url,
             risk_explanation=risk_explanation or analysis.notes,
             screening_type="AI-assisted screening result",
             care_guidance=get_care_guidance(analysis.risk_level),

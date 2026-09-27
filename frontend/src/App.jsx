@@ -12,7 +12,10 @@ import ResultPage from './pages/ResultPage'
 import SettingsPage from './pages/SettingsPage'
 import ChatPage from './pages/ChatPage'
 import VeterinariansPage from './pages/VeterinariansPage'
-import { AlertsPage, CowsPage, HistoryPage } from './pages/SimplePages'
+import AlertsPage from './pages/AlertsPage'
+import { CowsPage, HistoryPage } from './pages/SimplePages'
+import CowProfilePage from './pages/CowProfilePage'
+import CompareScansPage from './pages/CompareScansPage'
 import { useAuth } from './context/AuthContext'
 
 function RootRedirect() {
@@ -48,7 +51,10 @@ export default function App() {
               <Route path="/analyze" element={<AnalyzePage />} />
               <Route path="/camera" element={<CameraScanPage />} />
               <Route path="/result" element={<ResultPage />} />
+              <Route path="/result/:analysisId" element={<ResultPage />} />
               <Route path="/cows" element={<CowsPage />} />
+              <Route path="/cows/:cowId" element={<CowProfilePage />} />
+              <Route path="/compare" element={<CompareScansPage />} />
               <Route path="/history" element={<HistoryPage />} />
               <Route path="/alerts" element={<AlertsPage />} />
               <Route path="/chat" element={<ChatPage />} />

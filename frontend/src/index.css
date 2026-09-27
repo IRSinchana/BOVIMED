@@ -7,8 +7,12 @@
   --color-leaf: #40916c;
   --color-cream: #f8f5f0;
   --color-earth: #d8cfc4;
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Poppins", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", "Noto Sans", "Noto Sans Devanagari", "Noto Nastaliq Urdu",
+    "Noto Sans Arabic", "Noto Sans Bengali", "Noto Sans Tamil", "Noto Sans Telugu",
+    "Noto Sans Kannada", "Noto Sans Malayalam", "Noto Sans Gujarati", "Noto Sans Gurmukhi",
+    "Noto Sans Oriya", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Poppins", "Noto Sans", "Noto Sans Devanagari", "Noto Nastaliq Urdu",
+    ui-sans-serif, system-ui, sans-serif;
 }
 
 html,
@@ -17,12 +21,30 @@ body,
   min-height: 100%;
 }
 
+/* App shell is ALWAYS LTR — never flip sidebar/header/layout for RTL languages. */
+html,
+body {
+  direction: ltr;
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);
   background-color: var(--color-cream);
   color: var(--color-forest);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Arabic-script languages: improve glyph coverage without mirroring layout. */
+html.bovimed-rtl-text {
+  font-family: "Noto Nastaliq Urdu", "Noto Sans Arabic", "Inter", ui-sans-serif, system-ui,
+    sans-serif;
+}
+
+.bovimed-text-rtl {
+  direction: rtl;
+  text-align: start;
+  unicode-bidi: plaintext;
 }
 
 @keyframes fadeIn {
@@ -38,7 +60,6 @@ body {
 
 /* Do NOT set global `a { color: inherit }` — it hides active sidebar text. */
 
-/* Sidebar / bottom nav — explicit colors so active white never disappears */
 .bovimed-nav-link {
   color: #1b4332;
 }

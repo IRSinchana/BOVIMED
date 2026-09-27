@@ -67,7 +67,7 @@ export default function CameraScanPage() {
         cowId,
         filename: 'camera-capture.jpg',
       })
-      navigate('/result', { state: { result: data } })
+      navigate(`/result/${data.analysis_id}`, { state: { result: data } })
     } catch (e) {
       setAnalyzeError(e.message || t.common.backendDown)
     } finally {

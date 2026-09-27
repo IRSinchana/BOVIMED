@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
-import urllib.parse
-import urllib.request
 from typing import Any
 
+from app.services.ai_chat_service import generate_ai_reply, get_ai_config_status
 from app.services.care_guidance import get_care_guidance, normalize_risk
 
 logger = logging.getLogger(__name__)
@@ -662,6 +660,30 @@ def _format_context_note(context: dict | None, cow_id: str | None, lang: str) ->
     return f"[{' | '.join(items)}]\n\n"
 
 
+UNCONFIGURED_MESSAGES = {
+    "en": (
+        "BOVIMED AI is not configured on the server. "
+        "Set BOVIMED_LLM_ENABLED=true and GEMINI_API_KEY or OPENAI_API_KEY in backend .env. "
+        "Local safety guidance is available below when you ask a question."
+    ),
+    "hi": (
+        "BOVIMED AI सर्वर पर कॉन्फ़िगर नहीं है। "
+        "backend .env में BOVIMED_LLM_ENABLED=true और GEMINI_API_KEY या OPENAI_API_KEY सेट करें।"
+    ),
+}
+
+LANGUAGE_UNAVAILABLE = {
+    "en": (
+        "BOVIMED could not provide a reliable answer in your selected language right now. "
+        "Please try again or contact a veterinarian for urgent concerns."
+    ),
+    "hi": (
+        "BOVIMED आपकी चुनी भाषा में विश्वसनीय उत्तर नहीं दे सका। "
+        "कृपया पुनः प्रयास करें या तत्काल सहायता के लिए पशु चिकित्सक से संपर्क करें।"
+    ),
+}
+
+
 class ChatService:
     def reply(
         self,
@@ -670,6 +692,7 @@ class ChatService:
         language: str = "en",
         cow_id: str | None = None,
         context: dict | None = None,
+        history: list[dict[str, str]] | None = None,
         user_id: int | None = None,
     ) -> dict[str, Any]:
         message = (message or "").strip()
@@ -679,72 +702,52 @@ class ChatService:
                 "language": language or "en",
                 "sources": [],
                 "safety_notice": True,
-                "mode": "fallback",
+                "mode": "local",
             }
 
         lang = (language or "en").split("-")[0].lower()
         topic = _detect_topic(message)
+        ai_status = get_ai_config_status()
 
-        # Check for optional external LLM if configured and enabled
-        external_key = os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("BOVIMED_LLM_API_KEY")
-        external_enabled = os.getenv("BOVIMED_LLM_ENABLED", "false").lower() in ("true", "1", "yes")
+        if ai_status.enabled and not ai_status.configured:
+            notice = UNCONFIGURED_MESSAGES.get(lang) or UNCONFIGURED_MESSAGES["en"]
+            local = self._local_reply(message, lang=lang, cow_id=cow_id, context=context, topic=topic)
+            return {
+                **local,
+                "answer": notice + "\n\n" + local["answer"],
+                "mode": "unconfigured",
+            }
 
-        if external_key and external_enabled:
-            try:
-                llm_answer = self._call_external_llm(
-                    message,
-                    lang=lang,
-                    cow_id=cow_id,
-                    context=context,
-                    topic=topic,
-                    api_key=external_key,
-                )
-                if llm_answer:
-                    # Enforce medical safety suffix
-                    final_answer = llm_answer.strip() + "\n\n" + MED_SAFETY_DISCLAIMER
-                    return {
-                        "answer": final_answer,
-                        "language": lang,
-                        "sources": [],
-                        "safety_notice": True,
-                        "mode": "external",
-                        "topic": topic,
-                    }
-            except Exception as e:
-                logger.warning("External LLM call failed or skipped: %s; using safe local knowledge base", e)
+        if ai_status.enabled and ai_status.configured:
+            ai_result = generate_ai_reply(
+                message=message,
+                language=lang,
+                cow_id=cow_id,
+                context=context,
+                history=history,
+            )
+            if ai_result and ai_result.text.strip():
+                final_answer = ai_result.text.strip() + "\n\n" + MED_SAFETY_DISCLAIMER
+                return {
+                    "answer": final_answer,
+                    "language": lang,
+                    "sources": [{"provider": ai_result.provider, "model": ai_result.model}],
+                    "safety_notice": True,
+                    "mode": "external",
+                    "topic": topic,
+                }
+            logger.warning("LLM call failed for lang=%s; falling back to local guidance", lang)
+            local = self._local_reply(message, lang=lang, cow_id=cow_id, context=context, topic=topic)
+            fallback_notice = LANGUAGE_UNAVAILABLE.get(lang) or LANGUAGE_UNAVAILABLE["en"]
+            return {
+                **local,
+                "answer": fallback_notice + "\n\n" + local["answer"],
+                "mode": "error",
+            }
 
-        # Local safe knowledge base
-        lang_key = lang if lang in FAQ_KNOWLEDGE else "en"
-        base_answer = FAQ_KNOWLEDGE[lang_key].get(topic) or FAQ_KNOWLEDGE["en"][topic]
+        return self._local_reply(message, lang=lang, cow_id=cow_id, context=context, topic=topic)
 
-        # Add context header if available
-        context_prefix = _format_context_note(context, cow_id, lang)
-        answer = context_prefix + base_answer
-
-        # If specific risk level is passed in context, append care guidance next step
-        if context and context.get("risk_level"):
-            care = get_care_guidance(context.get("risk_level"))
-            if topic in ("high_risk", "emergency", "interpret") and care.get("next_step"):
-                answer += f"\nRecommended next step: {care['next_step']}"
-
-        # Medical safety disclaimer
-        answer += "\n\n" + MED_SAFETY_DISCLAIMER
-
-        # Language fallback notice if user chose a language not directly in local FAQ
-        if lang not in SUPPORTED_LOCAL_LANGS and lang != "en":
-            notice = "Full response translation is not currently available for this language. Showing a safe English answer.\n\n"
-            answer = notice + answer
-
-        return {
-            "answer": answer,
-            "language": lang if lang in SUPPORTED_LOCAL_LANGS else "en",
-            "sources": [],
-            "safety_notice": True,
-            "mode": "fallback",
-            "topic": topic,
-        }
-
-    def _call_external_llm(
+    def _local_reply(
         self,
         message: str,
         *,
@@ -752,47 +755,34 @@ class ChatService:
         cow_id: str | None,
         context: dict | None,
         topic: str,
-        api_key: str,
-    ) -> str | None:
-        """Call external LLM (e.g. Gemini / OpenAI compatible) with strict medical safety system instructions."""
-        system_instruction = (
-            "You are BOVIMED AI Assistant, a dairy cattle health screening guide for farmers.\n"
-            "CRITICAL SAFETY RULES:\n"
-            "1. You NEVER provide a definitive veterinary diagnosis.\n"
-            "2. You NEVER prescribe medicines, antibiotics, injections, or specific dosages.\n"
-            "3. If asked about medication or antibiotics, explain that medication must only be administered under "
-            "guidance from a qualified veterinarian.\n"
-            "4. Never invent fake veterinarians, phone numbers, or addresses.\n"
-            "5. Answer in the requested language code: " + lang + ".\n"
-            "6. Keep responses clear, practical, empathetic, and farmer-friendly."
-        )
+    ) -> dict[str, Any]:
+        lang_key = lang if lang in FAQ_KNOWLEDGE else "en"
+        base_answer = FAQ_KNOWLEDGE[lang_key].get(topic) or FAQ_KNOWLEDGE["en"][topic]
+        context_prefix = _format_context_note(context, cow_id, lang)
+        answer = context_prefix + base_answer
 
-        gemini_key = os.getenv("GEMINI_API_KEY")
-        if gemini_key:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
-            payload = {
-                "contents": [
-                    {
-                        "role": "user",
-                        "parts": [
-                            {"text": f"{system_instruction}\n\nFarmer Query: {message}\nCow Context: {json.dumps(context or {})}"}
-                        ]
-                    }
-                ]
-            }
-            req = urllib.request.Request(
-                url,
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
+        if context and context.get("risk_level"):
+            care = get_care_guidance(context.get("risk_level"))
+            if topic in ("high_risk", "emergency", "interpret") and care.get("next_step"):
+                answer += f"\nRecommended next step: {care['next_step']}"
+
+        answer += "\n\n" + MED_SAFETY_DISCLAIMER
+
+        if lang not in SUPPORTED_LOCAL_LANGS and lang != "en":
+            notice = (
+                "Full local guidance is not available in this language yet. "
+                "Showing a safe English answer. Enable BOVIMED AI for multilingual answers.\n\n"
             )
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                candidates = data.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    if parts:
-                        return parts[0].get("text")
-        return None
+            answer = notice + answer
+
+        return {
+            "answer": answer,
+            "language": lang if lang in SUPPORTED_LOCAL_LANGS else "en",
+            "sources": [],
+            "safety_notice": True,
+            "mode": "local",
+            "topic": topic,
+        }
 
 
 def get_chat_service() -> ChatService:

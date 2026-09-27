@@ -8,7 +8,7 @@ import LanguageSelector from '../components/LanguageSelector'
 import { ErrorMessage } from '../components/Status'
 
 export default function RegisterPage() {
-  const { t } = useI18n()
+  const { t, textDir } = useI18n()
   const { register, isAuthenticated, loading } = useAuth()
   const navigate = useNavigate()
   const [form, setForm] = useState({
@@ -64,7 +64,7 @@ export default function RegisterPage() {
   ]
 
   return (
-    <div className="min-h-screen bg-cream px-4 py-8">
+    <div className="min-h-screen bg-cream px-4 py-8" dir={textDir}>
       <div className="mx-auto max-w-xl rounded-3xl border border-earth bg-white p-6 shadow-lg sm:p-8">
         <div className="flex items-center justify-between">
           <BrandMark to="/login" />

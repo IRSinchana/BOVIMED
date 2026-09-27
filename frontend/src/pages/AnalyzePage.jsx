@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useOutletContext } from 'react-router-dom'
+import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom'
 import AnalysisResult from '../components/AnalysisResult'
 import ImageUploader from '../components/ImageUploader'
 import AiModeBadge from '../components/AiModeBadge'
@@ -10,10 +10,11 @@ import { analyzeImage, getHealth } from '../services/api'
 export default function AnalyzePage() {
   const { t } = useI18n()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { health, setHealth } = useOutletContext()
   const [file, setFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
-  const [cowId, setCowId] = useState('')
+  const [cowId, setCowId] = useState(searchParams.get('cowId') || searchParams.get('cow_id') || '')
   const [loading, setLoading] = useState(false)
   const [stepIndex, setStepIndex] = useState(0)
   const [error, setError] = useState(null)
@@ -31,12 +32,6 @@ export default function AnalyzePage() {
       .then((h) => setHealth?.(h))
       .catch(() => {})
   }, [setHealth])
-
-  useEffect(() => {
-    return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl)
-    }
-  }, [previewUrl])
 
   useEffect(() => {
     if (!loading) return undefined
@@ -80,7 +75,7 @@ export default function AnalyzePage() {
     try {
       const data = await analyzeImage(file, { cowId })
       setResult(data)
-      navigate('/result', { state: { result: data } })
+      navigate(`/result/${data.analysis_id}`, { state: { result: data } })
     } catch (e) {
       setError(e.message || t.common.backendDown)
     } finally {
@@ -138,7 +133,7 @@ export default function AnalyzePage() {
       </button>
 
       {result && !loading ? (
-        <AnalysisResult result={result} localPreviewUrl={previewUrl} health={health} />
+        <AnalysisResult result={result} health={health} />
       ) : null}
     </div>
   )

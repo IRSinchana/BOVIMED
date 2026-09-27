@@ -193,12 +193,12 @@ class RiskEngine:
     ) -> str:
         names = {str(d.get("class_name", "")) for d in relevant}
         if self.MASTITIS in names:
-            return "Possible signs of udder infection detected"
+            return "Possible mastitis indicators detected"
         if self.LUMPY in names:
             return "Possible infection-related signs detected"
         if self.HEALTHY_UDDER in names:
             return "Healthy udder signs detected"
-        return "AI screening complete"
+        return "No clear health finding detected"
 
     def _build_explanation(
         self,

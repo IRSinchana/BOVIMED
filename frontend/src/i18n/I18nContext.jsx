@@ -1,57 +1,100 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import i18n, { LANGUAGE_OPTIONS, RTL_LANGS, applyDocumentDirection } from './index'
+import i18n, {
+  ENGLISH_DICTIONARY,
+  LANGUAGE_OPTIONS,
+  LOCALE_BUNDLES,
+  RTL_LANGS,
+  applyDocumentLanguage,
+  getEnglishPath,
+  normalizeLocaleCode,
+  readStoredLocale,
+  STORAGE_KEY,
+} from './index'
 
 const I18nContext = createContext(null)
-const STORAGE_KEY = 'bovimed:lang'
 
-function readStoredLang() {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) return stored.split('-')[0].toLowerCase()
-  } catch {
-    // ignore
+function getPath(obj, path) {
+  const parts = path.split('.')
+  let cur = obj
+  for (const p of parts) {
+    if (cur == null || typeof cur !== 'object') return undefined
+    cur = cur[p]
   }
-  return null
+  return cur
 }
 
-/** Plain nested dictionary for the active language (rebuilt on each language change). */
-function resolveDictionary(langCode) {
-  const code = (langCode || 'en').split('-')[0].toLowerCase()
-  const enBundle = i18n.getResourceBundle('en', 'translation') || {}
-  const active = i18n.getResourceBundle(code, 'translation')
-  // Active bundle is already deep-merged with English at init time.
-  return active && typeof active === 'object' ? active : enBundle
+/**
+ * Nested dictionary for `t.nav.dashboard` usage.
+ * Resolves from the active locale bundle first.
+ * Falls back to English only — never to another Indian language.
+ */
+function buildNestedDictionary(langCode) {
+  const code = normalizeLocaleCode(langCode)
+  const bundle = LOCALE_BUNDLES[code] || LOCALE_BUNDLES.en || ENGLISH_DICTIONARY
+  const enBundle = LOCALE_BUNDLES.en || ENGLISH_DICTIONARY
+
+  function createNode(prefix) {
+    return new Proxy(
+      {},
+      {
+        get(_target, prop) {
+          if (prop === Symbol.toStringTag) return 'TranslationDictionary'
+          if (typeof prop !== 'string') return undefined
+
+          const path = prefix ? `${prefix}.${prop}` : prop
+          const shape = getEnglishPath(path)
+
+          if (shape && typeof shape === 'object' && !Array.isArray(shape)) {
+            return createNode(path)
+          }
+
+          const activeVal = getPath(bundle, path)
+          if (activeVal !== undefined && activeVal !== null && activeVal !== '') {
+            return activeVal
+          }
+
+          if (import.meta.env?.DEV && code !== 'en') {
+            console.warn(`[BOVIMED i18n] missing "${path}" in locale "${code}"`)
+          }
+
+          const enVal = getPath(enBundle, path)
+          return enVal !== undefined ? enVal : path
+        },
+      },
+    )
+  }
+
+  return createNode('')
 }
 
 export function I18nProvider({ children }) {
   const { i18n: i18nHook, ready } = useTranslation()
-  const [lang, setLangState] = useState(() => {
-    return (
-      readStoredLang() ||
-      (i18nHook.language || 'en').split('-')[0].toLowerCase()
-    )
-  })
+  const [lang, setLangState] = useState(() => readStoredLocale() || 'en')
+  const [revision, setRevision] = useState(0)
 
   const setLang = useCallback((code) => {
-    const c = (code || 'en').split('-')[0].toLowerCase()
-    setLangState(c)
-    applyDocumentDirection(c)
+    const normalized = normalizeLocaleCode(code)
+    setLangState(normalized)
+    setRevision((r) => r + 1)
+    applyDocumentLanguage(normalized)
     try {
-      localStorage.setItem(STORAGE_KEY, c)
+      localStorage.setItem(STORAGE_KEY, normalized)
     } catch {
       // ignore
     }
-    if (i18n.language !== c) {
-      void i18n.changeLanguage(c)
-    }
+    void i18n.changeLanguage(normalized)
   }, [])
 
   useEffect(() => {
     const onChange = (lng) => {
-      const code = (lng || 'en').split('-')[0].toLowerCase()
-      setLangState((prev) => (prev === code ? prev : code))
-      applyDocumentDirection(code)
+      const code = normalizeLocaleCode(lng)
+      setLangState((prev) => {
+        if (prev === code) return prev
+        setRevision((r) => r + 1)
+        return code
+      })
+      applyDocumentLanguage(code)
       try {
         localStorage.setItem(STORAGE_KEY, code)
       } catch {
@@ -59,28 +102,33 @@ export function I18nProvider({ children }) {
       }
     }
     i18nHook.on('languageChanged', onChange)
-    // Sync initial language from storage → i18n
-    const stored = readStoredLang()
-    if (stored && i18nHook.language !== stored) {
+    const stored = readStoredLocale()
+    if (stored && normalizeLocaleCode(i18nHook.language) !== stored) {
       void i18nHook.changeLanguage(stored)
     } else {
-      applyDocumentDirection(i18nHook.language || stored || 'en')
+      applyDocumentLanguage(stored || i18nHook.language || 'en')
     }
     return () => i18nHook.off('languageChanged', onChange)
   }, [i18nHook])
 
   const value = useMemo(() => {
-    const activeLang = (lang || 'en').split('-')[0].toLowerCase()
+    const activeLang = normalizeLocaleCode(lang)
+    const isRTL = RTL_LANGS.has(activeLang)
+    const meta = LANGUAGE_OPTIONS.find((l) => l.code === activeLang)
     return {
       lang: activeLang,
-      isRTL: RTL_LANGS.has(activeLang),
+      isRTL,
+      /** Text-level direction only — never flips the app shell. */
+      textDir: isRTL ? 'rtl' : 'ltr',
+      direction: meta?.direction || (isRTL ? 'rtl' : 'ltr'),
       setLang,
-      t: resolveDictionary(activeLang),
+      t: buildNestedDictionary(activeLang),
       languages: LANGUAGE_OPTIONS,
       i18n,
       ready,
+      revision,
     }
-  }, [lang, setLang, ready])
+  }, [lang, setLang, ready, revision])
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>
 }

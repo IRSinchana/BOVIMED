@@ -2,11 +2,21 @@ import { useEffect, useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../i18n/I18nContext'
+import { normalizeLocaleCode } from '../i18n/languages'
 import { ErrorMessage } from '../components/Status'
-import { getApiBase } from '../services/api'
+import {
+  getApiBase,
+  getNotificationPreferences,
+  updateNotificationPreferences,
+} from '../services/api'
+import {
+  getBrowserNotificationPermission,
+  isBrowserNotificationSupported,
+  requestBrowserNotificationPermission,
+} from '../utils/notifications'
 
 export default function SettingsPage() {
-  const { t, lang, setLang, languages } = useI18n()
+  const { t, lang, setLang, languages, textDir } = useI18n()
   const { user, saveProfile } = useAuth()
   const { health } = useOutletContext()
   const [form, setForm] = useState({
@@ -19,6 +29,24 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState(null)
   const [error, setError] = useState(null)
+  const [notifPrefs, setNotifPrefs] = useState({
+    health_alerts: true,
+    analysis_completed: false,
+    veterinary_reminders: true,
+    system_notifications: true,
+    browser_notifications: false,
+  })
+  const [notifSaving, setNotifSaving] = useState(false)
+  const [notifMessage, setNotifMessage] = useState(null)
+  const [notifError, setNotifError] = useState(null)
+  const [browserPerm, setBrowserPerm] = useState('default')
+
+  useEffect(() => {
+    setBrowserPerm(getBrowserNotificationPermission())
+    getNotificationPreferences()
+      .then((prefs) => setNotifPrefs(prefs))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (!user) return
@@ -36,6 +64,36 @@ export default function SettingsPage() {
   function onPickLanguage(code) {
     setLang(code)
     setForm((prev) => ({ ...prev, preferred_language: code }))
+  }
+
+  async function onSaveNotifPrefs(e) {
+    e.preventDefault()
+    setNotifSaving(true)
+    setNotifError(null)
+    setNotifMessage(null)
+    try {
+      const updated = await updateNotificationPreferences(notifPrefs)
+      setNotifPrefs(updated)
+      setNotifMessage(t.settings.notifSaved)
+    } catch (err) {
+      setNotifError(err.message || t.common.error)
+    } finally {
+      setNotifSaving(false)
+    }
+  }
+
+  async function onEnableBrowserNotifications() {
+    setNotifError(null)
+    const perm = await requestBrowserNotificationPermission()
+    setBrowserPerm(perm)
+    if (perm === 'granted') {
+      setNotifPrefs((p) => ({ ...p, browser_notifications: true }))
+      setNotifMessage(t.settings.browserNotifEnabled)
+    } else if (perm === 'denied') {
+      setNotifError(t.settings.browserNotifDenied)
+    } else if (perm === 'unsupported') {
+      setNotifError(t.settings.browserNotifUnsupported)
+    }
   }
 
   async function onSave(e) {
@@ -57,15 +115,20 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-8">
       <div>
-        <h1 className="font-display text-3xl font-bold text-[#1b4332]">{t.settings.title}</h1>
+        <h1 className="font-display text-3xl font-bold text-[#1b4332]" dir={textDir}>
+          {t.settings.title}
+        </h1>
       </div>
 
-      <section className="rounded-3xl border border-earth bg-white p-5 shadow-sm sm:p-6">
-        <h2 className="font-display text-xl font-semibold text-[#1b4332]">
+      <section className="rounded-3xl border border-earth bg-white p-5 shadow-sm sm:p-6" dir="ltr">
+        <h2 className="font-display text-xl font-semibold text-[#1b4332]" dir={textDir}>
           {t.settings.language}
         </h2>
-        <p className="mt-1 text-sm text-[#1b4332]/70">{t.settings.languageSubtitle}</p>
-        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <p className="mt-1 text-sm text-[#1b4332]/70" dir={textDir}>
+          {t.settings.languageSubtitle}
+        </p>
+        {/* Language card grid stays LTR so layout never mirrors for RTL languages. */}
+        <div className="mt-5 grid gap-3 sm:grid-cols-2" dir="ltr">
           {languages.map((l) => {
             const active = lang === l.code
             return (
@@ -81,12 +144,75 @@ export default function SettingsPage() {
               >
                 <p className="font-semibold">{l.native}</p>
                 <p className={`text-xs ${active ? 'text-white/80' : 'text-[#1b4332]/60'}`}>
-                  {l.label}
+                  {l.englishName || l.label}
                 </p>
               </button>
             )
           })}
         </div>
+      </section>
+
+      <section className="rounded-3xl border border-earth bg-white p-5 shadow-sm sm:p-6">
+        <h2 className="font-display text-xl font-semibold text-[#1b4332]" dir={textDir}>
+          {t.settings.notifications}
+        </h2>
+        <p className="mt-1 text-sm text-[#1b4332]/70" dir={textDir}>
+          {t.settings.notificationsSubtitle}
+        </p>
+        <form onSubmit={onSaveNotifPrefs} className="mt-4 space-y-3">
+          {[
+            ['health_alerts', t.settings.notifHealthAlerts],
+            ['analysis_completed', t.settings.notifAnalysisCompleted],
+            ['veterinary_reminders', t.settings.notifVeterinary],
+            ['system_notifications', t.settings.notifSystem],
+          ].map(([key, label]) => (
+            <label key={key} className="flex items-center justify-between gap-3 rounded-xl border border-earth px-4 py-3">
+              <span className="text-sm font-medium" dir={textDir}>{label}</span>
+              <input
+                type="checkbox"
+                checked={Boolean(notifPrefs[key])}
+                onChange={(e) => setNotifPrefs((p) => ({ ...p, [key]: e.target.checked }))}
+              />
+            </label>
+          ))}
+          <div className="rounded-xl border border-earth px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <span className="text-sm font-medium" dir={textDir}>{t.settings.notifBrowser}</span>
+              <input
+                type="checkbox"
+                checked={Boolean(notifPrefs.browser_notifications)}
+                onChange={(e) =>
+                  setNotifPrefs((p) => ({ ...p, browser_notifications: e.target.checked }))
+                }
+              />
+            </div>
+            {isBrowserNotificationSupported() ? (
+              <button
+                type="button"
+                onClick={onEnableBrowserNotifications}
+                className="mt-3 rounded-xl border border-[#2d6a4f] px-3 py-2 text-xs font-semibold text-[#2d6a4f]"
+              >
+                {t.settings.enableBrowserNotifications}
+              </button>
+            ) : (
+              <p className="mt-2 text-xs text-[#1b4332]/65" dir={textDir}>
+                {t.settings.browserNotifUnsupported}
+              </p>
+            )}
+            {browserPerm === 'denied' ? (
+              <p className="mt-2 text-xs text-amber-800" dir={textDir}>{t.settings.browserNotifDenied}</p>
+            ) : null}
+          </div>
+          <ErrorMessage message={notifError} />
+          {notifMessage ? <p className="text-sm font-medium text-[#2d6a4f]">{notifMessage}</p> : null}
+          <button
+            type="submit"
+            disabled={notifSaving}
+            className="rounded-2xl bg-[#1b4332] px-5 py-3 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {notifSaving ? t.settings.saving : t.settings.saveNotifications}
+          </button>
+        </form>
       </section>
 
       <section className="rounded-3xl border border-earth bg-white p-5 shadow-sm sm:p-6">
@@ -142,9 +268,9 @@ export default function SettingsPage() {
             <select
               value={form.preferred_language}
               onChange={(e) => {
-                const code = e.target.value
-                setForm((p) => ({ ...p, preferred_language: code }))
-                setLang(code)
+                const locale = normalizeLocaleCode(e.target.value)
+                setForm((p) => ({ ...p, preferred_language: locale }))
+                setLang(locale)
               }}
               className="w-full rounded-xl border border-earth px-4 py-3 outline-none focus:border-[#2d6a4f]"
             >

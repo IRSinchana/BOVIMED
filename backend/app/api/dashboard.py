@@ -40,6 +40,7 @@ def get_dashboard(db: Session = Depends(get_db)):
     # Latest analysis per cow for healthy / at-risk counts
     cows = db.scalars(select(Cow)).all()
     healthy = 0
+    monitoring = 0
     at_risk = 0
     for cow in cows:
         latest = db.scalar(
@@ -50,8 +51,11 @@ def get_dashboard(db: Session = Depends(get_db)):
         )
         if not latest:
             continue
-        if latest.risk_level in ("Low", "Healthy", RiskEngine.LOW, RiskEngine.HEALTHY):
+        level = latest.risk_level
+        if level in ("Low", "Healthy", RiskEngine.LOW, RiskEngine.HEALTHY):
             healthy += 1
+        elif level in ("Mild", RiskEngine.MILD):
+            monitoring += 1
         else:
             at_risk += 1
 
@@ -119,6 +123,7 @@ def get_dashboard(db: Session = Depends(get_db)):
     return DashboardStats(
         total_cows=total_cows,
         healthy=healthy,
+        monitoring=monitoring,
         at_risk=at_risk,
         analyses_this_month=analyses_this_month,
         total_analyses=total_analyses,

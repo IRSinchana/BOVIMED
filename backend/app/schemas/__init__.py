@@ -15,6 +15,30 @@ class ErrorResponse(BaseModel):
     error_code: str | None = None
 
 
+class ValidationMetricsOut(BaseModel):
+    mAP50: float = 0.8454
+    mAP50_95: float = 0.6019
+    precision: float = 0.8146
+    recall: float = 0.7695
+
+
+class ModelMetadataOut(BaseModel):
+    model_name: str
+    model_loaded: bool
+    demo_mode: bool
+
+
+class ModelInfoResponse(BaseModel):
+    model_name: str
+    model_type: str
+    model_file: str
+    model_loaded: bool
+    demo_mode: bool
+    class_count: int
+    classes: list[str]
+    validation_metrics: ValidationMetricsOut
+
+
 class DetectionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -85,6 +109,8 @@ class AnalysisOut(BaseModel):
     recommendations: list[str] = Field(default_factory=list)
     timestamp: datetime
     model_version: str
+    model_name: str = "BOVIMED YOLO11n"
+    model_loaded: bool = False
     demo_mode: bool
     image_url: str | None = None
     annotated_image_url: str | None = None
@@ -128,6 +154,7 @@ class AlertOut(BaseModel):
 class DashboardStats(BaseModel):
     total_cows: int
     healthy: int
+    monitoring: int = 0
     at_risk: int
     analyses_this_month: int
     total_analyses: int

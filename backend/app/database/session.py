@@ -41,6 +41,7 @@ def _seed_demo_farmer() -> None:
     """Create a documented demo farmer if none exists."""
     from sqlalchemy import select
 
+    from app.models.user import User
     from app.services.auth_service import hash_password
 
     db = SessionLocal()

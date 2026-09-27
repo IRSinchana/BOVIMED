@@ -8,7 +8,7 @@ import LanguageSelector from '../components/LanguageSelector'
 import { ErrorMessage } from '../components/Status'
 
 export default function LoginPage() {
-  const { t } = useI18n()
+  const { t, textDir } = useI18n()
   const { login, isAuthenticated, loading } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
@@ -32,20 +32,17 @@ export default function LoginPage() {
       await login(identifier, password, remember)
       navigate(location.state?.from || '/dashboard', { replace: true })
     } catch (err) {
-      setError(err.message || t.common.error)
+      if (err.isNetworkError) setError(t.common.backendDown)
+      else setError(err.message || t.common.error)
     } finally {
       setSubmitting(false)
     }
   }
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-2">
+    <div className="min-h-screen lg:grid lg:grid-cols-2" dir={textDir}>
       <section className="relative hidden overflow-hidden lg:block">
-        <img
-          src="/farm-hero.svg"
-          alt=""
-          className="absolute inset-0 h-full w-full object-cover"
-        />
+        <img src="/farm-hero.svg" alt="" className="absolute inset-0 h-full w-full object-cover" />
         <div className="absolute inset-0 bg-[#1b4332]/65" />
         <div className="relative z-10 flex h-full flex-col justify-between p-10 text-white">
           <BrandMark to="/login" light />
@@ -76,9 +73,7 @@ export default function LoginPage() {
             <BrandMark to="/login" />
             <LanguageSelector compact />
           </div>
-          <h2 className="font-display text-2xl font-bold text-[#1b4332]">
-            {t.auth.loginTitle}
-          </h2>
+          <h2 className="font-display text-2xl font-bold text-[#1b4332]">{t.auth.loginTitle}</h2>
           <p className="mt-1 text-sm text-[#1b4332]/70">{t.auth.loginSubtitle}</p>
 
           <form onSubmit={onSubmit} className="mt-6 space-y-4">

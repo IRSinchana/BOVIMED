@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import bcrypt
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from passlib.context import CryptContext
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
@@ -15,7 +15,6 @@ from app.config import get_settings
 from app.database import get_db
 from app.models.user import User
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer_scheme = HTTPBearer(auto_error=False)
 
 ALGORITHM = "HS256"
@@ -24,12 +23,13 @@ ACCESS_TOKEN_EXPIRE_HOURS = 72
 
 def hash_password(password: str) -> str:
     # bcrypt limit is 72 bytes
-    return pwd_context.hash(password[:72])
+    digest = bcrypt.hashpw(password[:72].encode(), bcrypt.gensalt())
+    return digest.decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
     try:
-        return pwd_context.verify(plain[:72], hashed)
+        return bcrypt.checkpw(plain[:72].encode(), hashed.encode())
     except Exception:  # noqa: BLE001
         return False
 
@@ -62,6 +62,23 @@ def decode_access_token(token: str) -> int:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid authentication token.",
         ) from exc
+
+
+def get_optional_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """Return the authenticated user when a valid token is present, else None."""
+    if credentials is None or not credentials.credentials:
+        return None
+    try:
+        user_id = decode_access_token(credentials.credentials)
+    except HTTPException:
+        return None
+    user = db.get(User, user_id)
+    if not user or not user.is_active:
+        return None
+    return user
 
 
 def get_current_user(

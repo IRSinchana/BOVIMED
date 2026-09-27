@@ -28,7 +28,11 @@ class Settings(BaseSettings):
     )
     max_upload_size_mb: int = Field(default=10, alias="MAX_UPLOAD_SIZE_MB")
     cors_origins: str = Field(
-        default="http://localhost:5173,http://127.0.0.1:5173",
+        default=(
+            "http://localhost:5173,http://127.0.0.1:5173,"
+            "http://localhost:5174,http://127.0.0.1:5174,"
+            "https://bovimed-6qup5l311-i-r-sinchana.vercel.app"
+        ),
         alias="CORS_ORIGINS",
     )
 
@@ -43,8 +47,30 @@ class Settings(BaseSettings):
     )
     google_places_api_key: str | None = Field(default=None, alias="GOOGLE_PLACES_API_KEY")
     vet_provider: str | None = Field(default=None, alias="VET_PROVIDER")
+
+    bovimed_llm_enabled: bool = Field(default=False, alias="BOVIMED_LLM_ENABLED")
+    bovimed_llm_provider: str | None = Field(default=None, alias="BOVIMED_LLM_PROVIDER")
+    gemini_api_key: str | None = Field(default=None, alias="GEMINI_API_KEY")
+    openai_api_key: str | None = Field(default=None, alias="OPENAI_API_KEY")
+    bovimed_llm_api_key: str | None = Field(default=None, alias="BOVIMED_LLM_API_KEY")
+    gemini_model: str = Field(default="gemini-1.5-flash", alias="GEMINI_MODEL")
+    openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
     model_version: str = Field(default="yolo11-bovimed-v1", alias="MODEL_VERSION")
     max_image_dimension: int = Field(default=1280, alias="MAX_IMAGE_DIMENSION")
+
+    otp_provider: str | None = Field(default=None, alias="OTP_PROVIDER")
+    otp_api_key: str | None = Field(default=None, alias="OTP_API_KEY")
+    otp_sender_id: str | None = Field(default=None, alias="OTP_SENDER_ID")
+    otp_template_id: str | None = Field(default=None, alias="OTP_TEMPLATE_ID")
+    otp_twilio_account_sid: str | None = Field(default=None, alias="OTP_TWILIO_ACCOUNT_SID")
+    otp_twilio_auth_token: str | None = Field(default=None, alias="OTP_TWILIO_AUTH_TOKEN")
+    otp_dev_mode: bool = Field(default=False, alias="OTP_DEV_MODE")
+
+    smtp_host: str | None = Field(default=None, alias="SMTP_HOST")
+    smtp_port: int = Field(default=587, alias="SMTP_PORT")
+    smtp_username: str | None = Field(default=None, alias="SMTP_USERNAME")
+    smtp_password: str | None = Field(default=None, alias="SMTP_PASSWORD")
+    smtp_from: str | None = Field(default=None, alias="SMTP_FROM")
 
     @property
     def cors_origin_list(self) -> list[str]:

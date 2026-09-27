@@ -124,12 +124,42 @@ class ImageService:
             )
         return path
 
-    @staticmethod
-    def to_public_url(path: Path | str | None, kind: str) -> str | None:
+    def media_file_path(self, path: Path | str | None, kind: str) -> Path | None:
+        """Resolve stored path to an on-disk file under uploads/ or results/."""
         if not path:
             return None
-        name = Path(path).name
-        return f"/media/{kind}/{name}"
+        normalized = str(path).replace("\\", "/")
+        name = Path(normalized).name
+        if not name:
+            return None
+        base = self.settings.results_dir if kind == "results" else self.settings.uploads_dir
+        return base / name
+
+    def media_file_exists(self, path: Path | str | None, kind: str) -> bool:
+        resolved = self.media_file_path(path, kind)
+        return bool(resolved and resolved.is_file())
+
+    @staticmethod
+    def to_public_url(path: Path | str | None, kind: str) -> str | None:
+        """
+        Return the public URL path served by FastAPI StaticFiles.
+
+        Storage is local filesystem today (uploads/ + results/). The URL shape
+        (/media/uploads/*, /media/results/*) is stable so object storage (S3,
+        Cloudinary, etc.) can be swapped in later without UI changes.
+        """
+        if not path:
+            return None
+        normalized = str(path).replace("\\", "/")
+        if normalized.startswith("http://") or normalized.startswith("https://"):
+            return normalized
+        if normalized.startswith("/media/"):
+            return normalized
+        name = Path(normalized).name
+        if not name:
+            return None
+        folder = "results" if kind == "results" else "uploads"
+        return f"/media/{folder}/{name}"
 
 
 def get_image_service() -> ImageService:

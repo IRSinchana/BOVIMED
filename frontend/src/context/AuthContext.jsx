@@ -9,9 +9,9 @@ import {
   updateProfile,
 } from '../services/api'
 import { useI18n } from '../i18n/I18nContext'
+import { STORAGE_KEY, normalizeLocaleCode } from '../i18n/languages'
 
 const AuthContext = createContext(null)
-const LANG_KEY = 'bovimed:lang'
 
 export function AuthProvider({ children }) {
   const { setLang } = useI18n()
@@ -20,20 +20,19 @@ export function AuthProvider({ children }) {
 
   /**
    * Apply profile language only when appropriate.
-   * Never override an explicit UI language already chosen in localStorage
-   * (that was the bug that made Settings language switches appear to fail).
+   * Never override an explicit UI language already chosen in localStorage —
+   * Settings / LanguageSelector always win for the live UI.
    */
   const applyUserLang = useCallback(
     (u, { force = false } = {}) => {
       if (!u?.preferred_language) return
-      if (!force) {
-        try {
-          if (localStorage.getItem(LANG_KEY)) return
-        } catch {
-          // ignore
-        }
+      const profileLocale = normalizeLocaleCode(u.preferred_language)
+      try {
+        if (!force && localStorage.getItem(STORAGE_KEY)) return
+      } catch {
+        if (!force) return
       }
-      setLang(u.preferred_language)
+      setLang(profileLocale)
     },
     [setLang],
   )
@@ -104,7 +103,7 @@ export function AuthProvider({ children }) {
       setUser(updated)
       // Profile save explicitly includes preferred_language from Settings.
       if (payload?.preferred_language) {
-        setLang(payload.preferred_language)
+        setLang(normalizeLocaleCode(payload.preferred_language))
       }
       return updated
     },

@@ -4,8 +4,6 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-from app.config import get_settings
-
 logger = logging.getLogger(__name__)
 
 
@@ -43,13 +41,13 @@ def _query_osm_overpass(lat: float, lon: float, radius_m: int = 15000) -> list[d
                     tags.get("addr:city"),
                     tags.get("addr:postcode"),
                 ]
-                addr = ", ".join([p for p in addr_parts if p]) or tags.get("address") or "Address on file in OpenStreetMap"
+                addr = ", ".join([p for p in addr_parts if p]) or tags.get("address")
                 phone = tags.get("phone") or tags.get("contact:phone")
                 providers.append(
                     {
                         "id": str(elem.get("id")),
                         "name": name,
-                        "address": addr,
+                        "address": addr if addr else None,
                         "phone": phone if phone else None,
                         "source": "OpenStreetMap (Verified)",
                     }
@@ -60,12 +58,24 @@ def _query_osm_overpass(lat: float, lon: float, radius_m: int = 15000) -> list[d
         return []
 
 
+def _maps_url(*, query: str | None, latitude: float | None, longitude: float | None) -> str:
+    """Build Google Maps search URL from real GPS or entered location text."""
+    if latitude is not None and longitude is not None:
+        # Prefer exact coordinates when GPS was used.
+        q = f"{latitude},{longitude}+veterinary+hospital"
+    elif query:
+        q = f"{query} veterinary hospital".replace(" ", "+")
+    else:
+        q = "veterinary+hospital"
+    return f"https://www.google.com/maps/search/?api=1&query={q}"
+
+
 class VeterinarianService:
     """
-    Structure ready for Google Places / Overpass / official VCI directories.
+    Never invents veterinarian contacts.
 
-    Without verified records, returns an empty verified list and honest messaging —
-    never fabricated contacts.
+    Returns verified OSM results only when a live Overpass lookup succeeds.
+    Otherwise returns an empty provider list with honest status codes.
     """
 
     def search(
@@ -82,42 +92,39 @@ class VeterinarianService:
         query = ", ".join(query_parts) if query_parts else None
 
         providers: list[dict] = []
-        status = "unavailable"
-        message = (
-            "Veterinarian availability could not be verified. "
-            "Verify availability before visiting."
-        )
+        location_detected = latitude is not None and longitude is not None
+        status = "no_verified"
+        # Machine-readable codes; frontend maps these to i18n strings.
+        message_key = "noVerified"
 
-        # Attempt OSM verified lookup if GPS coordinates are provided
-        if latitude is not None and longitude is not None:
+        if location_detected:
             osm_results = _query_osm_overpass(latitude, longitude)
             if osm_results:
                 providers = osm_results
                 status = "verified_found"
-                message = f"Found {len(providers)} verified veterinary facility(ies) near your coordinates."
+                message_key = "foundVerified"
             else:
-                status = "geo_no_results"
-                message = "Veterinarian availability could not be verified for your exact location."
+                # GPS worked — that is NOT the same as finding a verified vet.
+                status = "location_detected_no_verified"
+                message_key = "noVerifiedAtLocation"
         elif query:
-            status = "query_no_results"
-            message = f"Veterinarian availability could not be verified for '{query}'."
-
-        directions_query = query or (
-            f"{latitude},{longitude}" if latitude is not None and longitude is not None else "veterinary hospital"
-        )
-        directions_url = (
-            "https://www.google.com/maps/search/?api=1&query="
-            + str(directions_query).replace(" ", "+")
-            + "+veterinary+hospital"
-        )
+            # No verified directory configured for text search — honest empty state.
+            status = "no_verified"
+            message_key = "noVerified"
+        else:
+            status = "no_verified"
+            message_key = "notVerified"
 
         return {
             "success": True,
             "status": status,
-            "message": message,
-            "verify_notice": "Verify availability before visiting.",
+            "message_key": message_key,
+            "location_detected": location_detected,
+            "verified_found": status == "verified_found",
             "providers": providers,
-            "directions_url": directions_url,
+            "directions_url": _maps_url(
+                query=query, latitude=latitude, longitude=longitude
+            ),
             "query": {
                 "state": state,
                 "district": district,
