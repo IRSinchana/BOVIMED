@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 
 import cv2
 import numpy as np
+import torch
 from fastapi import HTTPException, status
 
 from app.config import Settings, get_settings
@@ -144,40 +145,117 @@ class YOLODetectionService:
             ) from exc
 
     def _real_inference(self, image_bgr: np.ndarray) -> InferenceResult:
-        results = self._model.predict(source=image_bgr, verbose=False)
+        if image_bgr is None or image_bgr.size == 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="YOLO11 inference received an empty image.",
+            )
+
+        original_h, original_w = image_bgr.shape[:2]
+        working = image_bgr
+        max_input_dim = 1280
+        if original_h and original_w:
+            scale = min(1.0, max_input_dim / max(original_h, original_w))
+            if scale < 1.0:
+                target_h = max(1, int(round(original_h * scale)))
+                target_w = max(1, int(round(original_w * scale)))
+                working = cv2.resize(
+                    image_bgr,
+                    (target_w, target_h),
+                    interpolation=cv2.INTER_AREA,
+                )
+
+        logger.info(
+            "YOLO inference start | input_shape=%s | bounded_shape=%s | imgsz=416",
+            (original_h, original_w),
+            working.shape[:2],
+        )
+
+        results = None
+        result = None
         detections: list[dict] = []
-        annotated = image_bgr.copy()
+        annotated = None
         names = dict(getattr(self._model, "names", None) or BOVIMED_CLASS_NAMES)
 
-        if results:
-            result = results[0]
-            names = dict(result.names or names)
-            if result.boxes is not None and len(result.boxes) > 0:
-                for box in result.boxes:
-                    cls_id = int(box.cls.item()) if box.cls is not None else -1
-                    conf = float(box.conf.item()) if box.conf is not None else 0.0
-                    class_name = str(names.get(cls_id, f"class_{cls_id}"))
-                    if not is_valid_bovimed_class(class_name):
-                        logger.warning(
-                            "Unexpected class from custom weights: id=%s name=%s",
-                            cls_id,
-                            class_name,
+        try:
+            with torch.inference_mode():
+                results = self._model.predict(
+                    source=working,
+                    imgsz=416,
+                    verbose=False,
+                )
+
+            if results:
+                result = results[0]
+                names = dict(result.names or names)
+                if result.boxes is not None and len(result.boxes) > 0:
+                    for box in result.boxes:
+                        cls_id = int(box.cls.item()) if box.cls is not None else -1
+                        conf = float(box.conf.item()) if box.conf is not None else 0.0
+                        class_name = str(names.get(cls_id, f"class_{cls_id}"))
+                        if not is_valid_bovimed_class(class_name):
+                            logger.warning(
+                                "Unexpected class from custom weights: id=%s name=%s",
+                                cls_id,
+                                class_name,
+                            )
+                        xyxy = box.xyxy[0].tolist() if box.xyxy is not None else None
+                        detections.append(
+                            {
+                                "class_id": cls_id,
+                                "class_name": class_name,
+                                "confidence": conf,
+                                "bbox": [float(v) for v in xyxy] if xyxy else None,
+                            }
                         )
-                    xyxy = box.xyxy[0].tolist() if box.xyxy is not None else None
-                    detections.append(
-                        {
-                            "class_id": cls_id,
-                            "class_name": class_name,
-                            "confidence": conf,
-                            "bbox": [float(v) for v in xyxy] if xyxy else None,
-                        }
+
+                try:
+                    plotted = result.plot()
+                    if plotted is not None:
+                        annotated = plotted
+                except Exception:  # noqa: BLE001
+                    annotated = self._draw_boxes(working, detections)
+
+            if annotated is None:
+                annotated = self._draw_boxes(working, detections)
+
+            if annotated is not None:
+                max_annot_dim = 1024
+                if max(annotated.shape[:2]) > max_annot_dim:
+                    scale = max_annot_dim / max(annotated.shape[:2])
+                    target_h = max(1, int(round(annotated.shape[0] * scale)))
+                    target_w = max(1, int(round(annotated.shape[1] * scale)))
+                    annotated = cv2.resize(
+                        annotated,
+                        (target_w, target_h),
+                        interpolation=cv2.INTER_AREA,
                     )
-            try:
-                plotted = result.plot()
-                if plotted is not None:
-                    annotated = plotted
-            except Exception:  # noqa: BLE001
-                annotated = self._draw_boxes(image_bgr, detections)
+
+            logger.info(
+                "YOLO inference complete | detections=%s | output_shape=%s",
+                len(detections),
+                annotated.shape[:2] if annotated is not None else (0, 0),
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("YOLO inference failed")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    "YOLO11 inference failed while processing the image. "
+                    "Please try again with another image."
+                ),
+            ) from exc
+        finally:
+            if results is not None:
+                del results
+                results = None
+            if result is not None:
+                del result
+                result = None
+            if working is not image_bgr:
+                del working
 
         primary = self._select_primary_finding(detections)
         if detections:
